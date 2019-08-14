@@ -1,0 +1,6 @@
+authors = ["Guilherme Bodin <guilherme.b.moraes@gmail.com>"]
+name = "LPIP.jl"
+uuid = "0ecde40a-bebd-11e9-0244-1b8cbc9db53c"
+version = "0.1.0"
+
+[deps]
