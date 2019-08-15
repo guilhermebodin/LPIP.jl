@@ -69,9 +69,9 @@ mutable struct Params
     time_limit::Float64
 
     function Params(;verbose::Bool = false, max_iter::Int = 100, rho::Float64 = 0.1,
-                    alpha::Float64 = 0.9, tol::Float64 = 1e-6)
+                    alpha::Float64 = 0.9, tol::Float64 = 1e-6, time_limit::Float64 = 1e10)
         (rho <= 0 || rho > 1) && error("rho must be between in (0, 1]")
         (alpha <= 0 || alpha >= 1) && error("alpha must be in (0, 1)")
-        return new(verbose, max_iter, rho, alpha, tol, 1e10)
+        return new(verbose, max_iter, rho, alpha, tol, time_limit)
     end
 end

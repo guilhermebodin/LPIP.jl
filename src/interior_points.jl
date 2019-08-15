@@ -52,7 +52,7 @@ function check_ilimited_or_unbounded()
 end
 
 function update_lpip_pb_vars(newton_system::NewtonSystem{T}, lpip_pb::LPIPLinearProblem{T}, params::Params) where T
-    ## Find step lenghts
+    # Find step lenghts
     beta_primal = 1
     beta_dual = 1
 
@@ -69,12 +69,9 @@ function update_lpip_pb_vars(newton_system::NewtonSystem{T}, lpip_pb::LPIPLinear
         end
     end
 
-    # Multiply betas to alpha
-    beta_primal = params.alpha * beta_primal
-    beta_dual = params.alpha * beta_dual
     # Update variables
-    @. lpip_pb.variables.x = lpip_pb.variables.x + beta_primal * newton_system.d.dx
-    @. lpip_pb.variables.p = lpip_pb.variables.p + beta_dual * newton_system.d.dp
-    @. lpip_pb.variables.s = lpip_pb.variables.s + beta_dual * newton_system.d.ds
+    @. lpip_pb.variables.x +=  params.alpha * beta_primal * newton_system.d.dx
+    @. lpip_pb.variables.p +=  params.alpha * beta_dual * newton_system.d.dp
+    @. lpip_pb.variables.s +=  params.alpha * beta_dual * newton_system.d.ds
     return
 end
