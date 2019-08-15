@@ -23,7 +23,7 @@ function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
         # Update x, s, p
         update_lpip_pb_vars(newton_system, lpip_pb, params)
         # Check if problem is ubounded or infeasible
-        check_ilimited_or_unbounded() # Decide how to do this
+        check_infeasible_or_unbounded(lpip_pb)
 
         if check_time_limit(params.time_limit, t0) == 4
             return Result{T}(lpip_pb.variables, 4, i, time() - t0)
@@ -47,7 +47,7 @@ function check_time_limit(time_limit::Float64, t0::Float64)
     return 0
 end
 
-function check_ilimited_or_unbounded()
+function check_infeasible_or_unbounded(lpip_pb::LPIPLinearProblem{T}) where T
     
 end
 
