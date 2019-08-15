@@ -12,7 +12,7 @@ function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
     # Interior points iteration
     @inbounds for i in 1:params.max_iter
         # Optimality test
-        check_optimality(lpip_pb, params.tol) == 1 && Result(lpip_pb, 1, i, time() - t0)
+        check_optimality(lpip_pb, params.tol) == 1 && return Result(lpip_pb, 1, i, time() - t0)
         # Solve the system and fill newton directions
         solve_kkt(newton_system, lpip_pb, params)
         # Update x, s, p
@@ -35,9 +35,9 @@ end
 
 function check_time_limit(time_limit::Float64, t0::Float64)
     if time() - t0 > time_limit
-        return 4
+        return 3 # Time limit
     end
-    return 0
+    return 0 # Not solved
 end
 
 function check_infeasible_or_unbounded(lpip_pb::LPIPLinearProblem{T}) where T
