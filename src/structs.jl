@@ -14,8 +14,8 @@ mutable struct LPIPVariables{T}
 
     function LPIPVariables{T}(m::Int, n::Int) where T
         return new{T}(
-                    ones(T, m+n),
-                    ones(T, m+n),
+                    ones(T, n),
+                    ones(T, n),
                     ones(T, m)
                 )
     end
@@ -27,16 +27,15 @@ struct LPIPLinearProblem{T}
     c::AbstractVector{T}
     d::T
     variables::LPIPVariables{T}
-    m::Int # Number of constraints
-    # add numer of equality constraints (we don`t need to expand A and c on those ones)
+    m::Int # Number of equality constraints
     n::Int # Number of variables
 
     function LPIPLinearProblem{T}(linear_problem::RawLinearProblem{T}) where T
         m, n = size(linear_problem.A)
         return new{T}(
-                    extended_A(linear_problem.A, m),
+                    linear_problem.A,
                     linear_problem.b,
-                    extended_c(linear_problem.c, m),
+                    linear_problem.c,
                     linear_problem.d,
                     LPIPVariables{T}(m, n),
                     m,
@@ -63,14 +62,6 @@ function Result(lpip_pb::LPIPLinearProblem{T}, status::Int, iter::Int, time::Flo
     obj_val = dot(lpip_pb.c, lpip_pb.variables.x) + lpip_pb.d
     dual_obj_val = dot(lpip_pb.b, lpip_pb.variables.p) + lpip_pb.d
     return Result{T}(lpip_pb.variables, obj_val, dual_obj_val, status, iter, time)
-end
-
-function extended_A(A::AbstractMatrix{T}, m::Int) where T
-    return [A Matrix{T}(I, m, m)]
-end
-
-function extended_c(c::AbstractVector{T}, m::Int) where T
-    return [c; zeros(T, m)]
 end
 
 mutable struct Params

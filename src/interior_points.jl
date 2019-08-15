@@ -54,7 +54,7 @@ function update_lpip_pb_vars(newton_system::NewtonSystem{T}, lpip_pb::LPIPLinear
     beta_primal = 1
     beta_dual = 1
 
-    for i in 1:(lpip_pb.m + lpip_pb.n)
+    for i in 1:lpip_pb.n
         if newton_system.d.dx[i] <= 0
             if beta_primal > - lpip_pb.variables.x[i] / newton_system.d.dx[i]
                 beta_primal = - lpip_pb.variables.x[i] / newton_system.d.dx[i]

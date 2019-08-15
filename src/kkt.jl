@@ -6,8 +6,8 @@ mutable struct NewtonDirections{T}
 
     function NewtonDirections{T}(d::AbstractVector{T}, m::Int, n::Int) where T
         return new(
-            zeros(T, m+n), # x
-            zeros(T, m+n), # s
+            zeros(T, n), # x
+            zeros(T, n), # s
             zeros(T, m)    # p
         )
     end
@@ -21,9 +21,9 @@ mutable struct NewtonSystem{T}
     function NewtonSystem{T}(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
         m = lpip_pb.m
         n = lpip_pb.n
-        J = zeros(T, 2(m + n) + m, 2(m+n) + m) 
-        F = zeros(T, 2(m + n) + m) 
-        return new(J, F, NewtonDirections{T}(zeros(T, 2(m + n) + m), m, n))
+        J = zeros(T, 2n + m, 2n + m) 
+        F = zeros(T, 2n + m) 
+        return new(J, F, NewtonDirections{T}(zeros(T, 2n + m), m, n))
     end
 end
 
@@ -36,8 +36,8 @@ function build_J_F!(newton_system::NewtonSystem{T}, lpip_pb::LPIPLinearProblem{T
     X = Diagonal(lpip_pb.variables.x)
     S = Diagonal(lpip_pb.variables.s)
     # Auxiliary e
-    e = ones(T, m + n) # m + n
-    mi = params.rho * dot(lpip_pb.variables.x, lpip_pb.variables.s) / (m + n)
+    e = ones(T, n) # m + n
+    mi = params.rho * dot(lpip_pb.variables.x, lpip_pb.variables.s) / n
 
     # Build J
     build_J!(newton_system, lpip_pb.A, X, S, m, n)
@@ -53,9 +53,9 @@ end
 function build_J!(newton_system::NewtonSystem{T}, A::AbstractMatrix{T}, X::AbstractMatrix{T}, 
                  S::AbstractMatrix{T}, m::Int, n::Int) where T
 
-    newton_system.J = [A zeros(m, m) zeros(m, m + n);
-                       zeros(m + n, m + n) A' Matrix(I, m + n, m + n);
-                       S zeros(m + n, m) X]
+    newton_system.J = [A zeros(m, m) zeros(m, n);
+                       zeros(n, n) A' Matrix(I, n, n);
+                       S zeros(n, m) X]
     return
 end
 
@@ -78,8 +78,8 @@ function solve_kkt(newton_system::NewtonSystem{T}, lpip_pb::LPIPLinearProblem{T}
     m = lpip_pb.m
     n = lpip_pb.n
 
-    newton_system.d.dx = d[1:m + n]
-    newton_system.d.dp = d[(m + n + 1):(m + n + m)]
-    newton_system.d.ds = d[(m + n + m + 1):(2 * (m + n) + m)]
+    newton_system.d.dx = d[1:n]
+    newton_system.d.dp = d[(n + 1):(n + m)]
+    newton_system.d.ds = d[(n + m + 1):(n + m + n)]
     return 
 end
