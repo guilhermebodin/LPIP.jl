@@ -63,8 +63,8 @@ function update_lpip_pb_vars(newton_system::NewtonSystem{T}, lpip_pb::LPIPLinear
     end
 
     # Update variables
-    @. lpip_pb.variables.x +=  params.alpha * beta_primal * newton_system.d.dx
-    @. lpip_pb.variables.p +=  params.alpha * beta_dual * newton_system.d.dp
-    @. lpip_pb.variables.s +=  params.alpha * beta_dual * newton_system.d.ds
+    @. lpip_pb.variables.x += params.alpha * beta_primal * newton_system.d.dx
+    @. lpip_pb.variables.p += params.alpha * beta_dual * newton_system.d.dp
+    @. lpip_pb.variables.s += params.alpha * beta_dual * newton_system.d.ds
     return
 end
