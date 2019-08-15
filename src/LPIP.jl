@@ -2,7 +2,7 @@ module LPIP
 
 using LinearAlgebra
 
-include("structs.jl")
+include("main_structs.jl")
 include("prints.jl")
 include("kkt.jl")
 include("interior_points.jl")
