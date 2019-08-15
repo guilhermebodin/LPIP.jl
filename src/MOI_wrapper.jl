@@ -70,8 +70,8 @@ MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status == 1 ? MO
 
 function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
     s = optimizer.sol.status
-    @assert -1 <= s <= 4
-    if s == -1 || 0
+    @assert 0 <= s <= 4
+    if s == 0
         return MOI.OPTIMIZE_NOT_CALLED
     elseif s == 1
         return MOI.OPTIMAL

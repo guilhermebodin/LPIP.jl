@@ -8,7 +8,7 @@ mutable struct NewtonDirections{T}
         return new(
             zeros(T, n), # x
             zeros(T, n), # s
-            zeros(T, m)    # p
+            zeros(T, m)  # p
         )
     end
 end
