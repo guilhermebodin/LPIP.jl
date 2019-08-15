@@ -2,10 +2,9 @@
 -1 - NotStarted
  0 - NotSolved
  1 - Optimal
- 2 - Ilimited
- 3 - Unbounded
- 4 - Time limit
- 5 - Iteration limit
+ 2 - Infeasible or unbounded
+ 3 - Time limit
+ 4 - Iteration limit
 """
 function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
     
