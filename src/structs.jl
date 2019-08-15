@@ -27,6 +27,7 @@ struct LPIPLinearProblem{T}
     variables::LPIPVariables{T}
     m::Int # Number of constraints
     n::Int # Number of variables
+    time::Float64
 
     function LPIPLinearProblem{T}(linear_problem::RawLinearProblem{T}) where T
         m, n = size(linear_problem.A)
@@ -36,7 +37,8 @@ struct LPIPLinearProblem{T}
                     extended_c(linear_problem.c, m),
                     LPIPVariables{T}(m, n),
                     m,
-                    n
+                    n,
+                    0.0
                )
     end
 end
