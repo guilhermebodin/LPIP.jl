@@ -6,8 +6,8 @@ const VI = MOI.VariableIndex
 
 const MOIU = MOI.Utilities
 
-# const SF = Union{MOI.SingleVariable, MOI.ScalarAffineFunction{Float64}, MOI.VectorOfVariables, MOI.VectorAffineFunction{Float64}}
-# const SS = Union{MOI.EqualTo{Float64}, MOI.GreaterThan{Float64}, MOI.LessThan{Float64}, MOI.Zeros, MOI.Nonnegatives, MOI.Nonpositives, MOI.SecondOrderCone, MOI.PositiveSemidefiniteConeTriangle}
+const SF = Union{MOI.SingleVariable, MOI.ScalarAffineFunction{Float64}, MOI.VectorOfVariables, MOI.VectorAffineFunction{Float64}}
+const SS = Union{MOI.EqualTo{Float64}, MOI.GreaterThan{Float64}, MOI.LessThan{Float64}, MOI.Zeros, MOI.Nonnegatives, MOI.Nonpositives}
 
 mutable struct MOISolution
     status::Int
@@ -20,8 +20,8 @@ mutable struct MOISolution
 end
 MOISolution() = MOISolution(0, Float64[], Float64[], Float64[], NaN, NaN, NaN, NaN, NaN, NaN, 0)
 
-mutable struct Optimizer{T} <: MOI.AbstractOptimizer
-    lpip_pb::LPIPLinearProblem{T}
+mutable struct Optimizer <: MOI.AbstractOptimizer
+    lpip_pb::LPIPLinearProblem{Float64}
     maxsense::Bool
     sol::MOISolution
 
@@ -31,7 +31,16 @@ mutable struct Optimizer{T} <: MOI.AbstractOptimizer
     end
 end
 function Optimizer(;args...)
-    return Optimizer{T}(args)
+    return Optimizer(args)
+end
+
+function MOI.is_empty(optimizer::Optimizer)
+    !optimizer.maxsense && optimizer.data === nothing
+end
+function MOI.empty!(optimizer::Optimizer)
+    optimizer.maxsense = false
+    optimizer.data = nothing # It should already be nothing except if an error is thrown inside copy_to
+    optimizer.sol.ret_val = 0
 end
 
 function MOI.supports(::Optimizer,
@@ -49,9 +58,13 @@ function MOI.supports_constraint(::Optimizer, ::Type{MOI.AbstractFunction}, ::Ty
     return false 
 end
 
+function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; copy_names::Bool = true)
+    return MOIU.allocate_load(dest, src, copy_names)
+end
+
 # MOI getters 
 MOI.get(::Optimizer, ::MOI.SolverName) = "LPIP"
-MOI.get(optimizer::Optimizer, ::MOI.SolveTime) = # optimizer.lpip_pb.time
+MOI.get(optimizer::Optimizer, ::MOI.SolveTime) = optimizer.lpip_pb.time
 MOI.get(optimizer::Optimizer, ::MOI.PrimalStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
 MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
 

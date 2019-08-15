@@ -4,6 +4,7 @@ struct RawLinearProblem{T}
     A::AbstractMatrix{T}
     b::AbstractVector{T}
     c::AbstractVector{T}
+    d::T
 end
 
 mutable struct LPIPVariables{T} 
@@ -24,10 +25,11 @@ struct LPIPLinearProblem{T}
     A::AbstractMatrix{T}
     b::AbstractVector{T}
     c::AbstractVector{T}
+    d::T
     variables::LPIPVariables{T}
     m::Int # Number of constraints
+    # add numer of equality constraints (we don`t need to expand A and c on those ones)
     n::Int # Number of variables
-    time::Float64
 
     function LPIPLinearProblem{T}(linear_problem::RawLinearProblem{T}) where T
         m, n = size(linear_problem.A)
@@ -35,23 +37,32 @@ struct LPIPLinearProblem{T}
                     extended_A(linear_problem.A, m),
                     linear_problem.b,
                     extended_c(linear_problem.c, m),
+                    linear_problem.d,
                     LPIPVariables{T}(m, n),
                     m,
                     n,
-                    0.0
                )
     end
 end
 
 mutable struct Result{T}
     variables::LPIPVariables{T}
+    obj_val::T
+    dual_obj_val::T
     status::Int
     iter::Int
     time::Float64
 
-    function Result{T}(vars::LPIPVariables{T}, status::Int, iter::Int, time::Float64) where T
-        return new(vars, status, iter, time)
+    function Result{T}(vars::LPIPVariables{T}, obj_val::T, dual_obj_val::T, 
+                       status::Int, iter::Int, time::Float64) where T
+        return new(vars, obj_val, dual_obj_val, status, iter, time)
     end
+end
+
+function Result(lpip_pb::LPIPLinearProblem{T}, status::Int, iter::Int, time::Float64) where T
+    obj_val = dot(lpip_pb.c, lpip_pb.variables.x) + lpip_pb.d
+    dual_obj_val = dot(lpip_pb.b, lpip_pb.variables.p) + lpip_pb.d
+    return Result{T}(lpip_pb.variables, obj_val, dual_obj_val, status, iter, time)
 end
 
 function extended_A(A::AbstractMatrix{T}, m::Int) where T

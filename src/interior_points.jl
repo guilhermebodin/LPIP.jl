@@ -7,15 +7,14 @@
  4 - Iteration limit
 """
 function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
-    
+    t0 = time() # Start the timer
     status = -1 # Not solved
     newton_system = NewtonSystem{T}(lpip_pb, params)
-    lpip_pb.time = time()
     # Interior points iteration
     @inbounds for i in 1:params.max_iter
         # Optimality test
         if check_optimality(lpip_pb, params.tol) == 1
-            return Result{T}(lpip_pb.variables, 1, i, time() - lpip_pb.time)
+            return Result(lpip_pb, 1, i, time() - t0)
         end
         # Solve the system and fill newton directions
         solve_kkt(newton_system, lpip_pb, params)
@@ -25,11 +24,11 @@ function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
         check_infeasible_or_unbounded(lpip_pb)
 
         if check_time_limit(params.time_limit, t0) == 4
-            return Result{T}(lpip_pb.variables, 4, i, time() - lpip_pb.time)
+            return Result(lpip_pb, 4, i, time() - t0)
         end
     end
     # Iteration limit
-    return Result{T}(lpip_pb.variables, 5, params.max_iter, time() - lpip_pb.time)
+    return Result(lpip_pb, 1, params.max_iter, time() - t0)
 end
 
 function check_optimality(lpip_pb::LPIPLinearProblem{T}, tol::Float64) where T
