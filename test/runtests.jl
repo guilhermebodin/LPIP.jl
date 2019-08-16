@@ -3,15 +3,14 @@ using LPIP
 
 
 A = [
-    2 1 
+    2. 1 
     1 2
 ]
-b = [4;4]
-c = [4; 3]
-d = 3
+b = [4.;4]
+c = [0.0; 0]
+d = 3.
 
-linear_problem = RawLinearProblem{Float64}(A, b, c, d)
-lpip_pb = LPIP.LPIPLinearProblem{Float64}(linear_problem)
+lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 2)
 params = LPIP.Params(;rho = 0.01)
 
 @time lp = LPIP.interior_points(lpip_pb, params)

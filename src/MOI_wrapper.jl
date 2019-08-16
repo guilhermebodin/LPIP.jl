@@ -28,25 +28,36 @@ mutable struct ModelData
     c::Vector{Float64} # Objective coefficients
 end
 
+mutable struct ConeData
+    f::Int # length of the zero cone (equality constraints)
+    l::Int # length of the nonnegatives cone (<= constraints)
+    function ConeData()
+        return new(0, 0)
+    end
+end
+
 mutable struct Optimizer <: MOI.AbstractOptimizer
+    cone::ConeData
     data::Union{Nothing, ModelData} # only non-Void between MOI.copy_to and MOI.optimize!
     maxsense::Bool
     sol::MOISolution
     params::Params
     function Optimizer(args...)
-        new(nothing, false, MOISolution(), Params(;args...))
+        return new(ConeData(), nothing, false, MOISolution(), Params(;args...))
     end
 end
 
 function MOI.is_empty(optimizer::Optimizer)
-    !optimizer.maxsense && optimizer.data === nothing
+    return !optimizer.maxsense && optimizer.data === nothing
 end
 function MOI.empty!(optimizer::Optimizer)
     optimizer.maxsense = false
     optimizer.data = nothing # It should already be nothing except if an error is thrown inside copy_to
     optimizer.sol.status = 0
+    return
 end
-MOIU.needs_allocate_load(instance::Optimizer) = true
+
+MOIU.supports_allocate_load(::Optimizer, copy_names::Bool) = !copy_names
 
 function MOI.supports(::Optimizer,
                       ::Union{MOI.ObjectiveSense,
@@ -68,12 +79,29 @@ function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart,
     return false
 end
 
-function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; copy_names::Bool = true)
-    return MOIU.allocate_load(dest, src, copy_names)
+function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; kws...)
+    return MOIU.automatic_copy_to(dest, src; kws...)
 end
 
+# Computes cone dimensions
+function constroffset(cone::ConeData, ci::CI{<:MOI.AbstractFunction, MOI.Zeros})
+    return ci.value
+end
+function _allocate_constraint(cone::ConeData, f, s::MOI.Zeros)
+    ci = cone.f
+    cone.f += MOI.dimension(s)
+    return ci
+end
+function constroffset(cone::ConeData, ci::CI{<:MOI.AbstractFunction, MOI.Nonnegatives})
+    return cone.f + ci.value
+end
+function _allocate_constraint(cone::ConeData, f, s::MOI.Nonnegatives)
+    ci = cone.l
+    cone.l += MOI.dimension(s)
+    return ci
+end
 function MOIU.allocate_constraint(optimizer::Optimizer, f::F, s::S) where {F <: MOI.AbstractFunction, S <: MOI.AbstractSet}
-    return CI{F, S}(_allocate_constraint(optimizer.data, f, s))
+    return CI{F, S}(_allocate_constraint(optimizer.cone, f, s))
 end
 
 output_index(t::MOI.VectorAffineTerm) = t.output_index
@@ -142,7 +170,7 @@ function MOI.optimize!(optimizer::Optimizer)
     c = optimizer.data.c
     optimizer.data = nothing # Allows GC to free optimizer.data before A is loaded to SCS
 
-    lpip_pb = LPIP.LPIPLinearProblem{Float64}(RawLinearProblem{Float64}(A, b, c, obj_constant))
+    lpip_pb = LPIP.LPIPLinearProblem{Float64}(A, b, c, obj_constant, cone.l)
 
     t0 = time()
     sol = LPIP.interior_points(lpip_pb, optimizer.params)
