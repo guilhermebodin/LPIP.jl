@@ -6,8 +6,8 @@ const VI = MOI.VariableIndex
 
 const MOIU = MOI.Utilities
 
-const SF = Union{MOI.SingleVariable, MOI.ScalarAffineFunction{Float64}, MOI.VectorOfVariables, MOI.VectorAffineFunction{Float64}}
-const SS = Union{MOI.EqualTo{Float64}, MOI.GreaterThan{Float64}, MOI.LessThan{Float64}, MOI.Zeros, MOI.Nonnegatives, MOI.Nonpositives}
+const SF = MOI.VectorAffineFunction{Float64}
+const SS = Union{MOI.Zeros, MOI.Nonnegatives}
 
 mutable struct MOISolution
     status::Int
@@ -15,23 +15,27 @@ mutable struct MOISolution
     dual::Vector{Float64} # dual of constraints
     objval::Float64
     dual_objval::Float64
-    gap::Float64
-    time::Float64
+    solve_time::Float64
 end
-MOISolution() = MOISolution(0, Float64[], Float64[], Float64[], NaN, NaN, NaN, NaN, NaN, NaN, 0)
+MOISolution() = MOISolution(0, Float64[], Float64[], NaN, NaN, NaN)
+
+mutable struct ModelData
+    I::Vector{Int} # List of rows
+    J::Vector{Int} # List of cols
+    V::Vector{Float64} # List of coefficients
+    b::Vector{Float64} # constants
+    obj_constant::Float64 # The objective is min c'x + obj_constant
+    c::Vector{Float64} # Objective coefficients
+end
 
 mutable struct Optimizer <: MOI.AbstractOptimizer
-    lpip_pb::LPIPLinearProblem{Float64}
+    data::Union{Nothing, ModelData} # only non-Void between MOI.copy_to and MOI.optimize!
     maxsense::Bool
     sol::MOISolution
-
     params::Params
-    function Optimizer(args)
-        new()
+    function Optimizer(args...)
+        new(nothing, false, MOISolution(), Params(;args...))
     end
-end
-function Optimizer(;args...)
-    return Optimizer(args)
 end
 
 function MOI.is_empty(optimizer::Optimizer)
@@ -40,8 +44,9 @@ end
 function MOI.empty!(optimizer::Optimizer)
     optimizer.maxsense = false
     optimizer.data = nothing # It should already be nothing except if an error is thrown inside copy_to
-    optimizer.sol.ret_val = 0
+    optimizer.sol.status = 0
 end
+MOIU.needs_allocate_load(instance::Optimizer) = true
 
 function MOI.supports(::Optimizer,
                       ::Union{MOI.ObjectiveSense,
@@ -58,13 +63,41 @@ function MOI.supports_constraint(::Optimizer, ::Type{MOI.AbstractFunction}, ::Ty
     return false 
 end
 
+function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart,
+                      ::Type{MOI.VariableIndex})
+    return false
+end
+
 function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; copy_names::Bool = true)
     return MOIU.allocate_load(dest, src, copy_names)
 end
 
+function MOIU.allocate_constraint(optimizer::Optimizer, f::F, s::S) where {F <: MOI.AbstractFunction, S <: MOI.AbstractSet}
+    return CI{F, S}(_allocate_constraint(optimizer.data, f, s))
+end
+
+output_index(t::MOI.VectorAffineTerm) = t.output_index
+variable_index_value(t::MOI.ScalarAffineTerm) = t.variable_index.value
+variable_index_value(t::MOI.VectorAffineTerm) = variable_index_value(t.scalar_term)
+coefficient(t::MOI.ScalarAffineTerm) = t.coefficient
+coefficient(t::MOI.VectorAffineTerm) = coefficient(t.scalar_term)
+
+function MOIU.load_constraint(optimizer::Optimizer, ci::CI, f::MOI.VectorAffineFunction, s::MOI.AbstractVectorSet)
+    A = sparse(output_index.(f.terms), variable_index_value.(f.terms), coefficient.(f.terms))
+    # sparse combines duplicates with + but does not remove zeros created so we call dropzeros!
+    dropzeros!(A)
+    I, J, V = findnz(A)
+
+    optimizer.data.b = f.constants
+    optimizer.data.I = I
+    optimizer.data.J = J
+    optimizer.data.V = V
+    return
+end
+
 # MOI getters 
 MOI.get(::Optimizer, ::MOI.SolverName) = "LPIP"
-MOI.get(optimizer::Optimizer, ::MOI.SolveTime) = optimizer.lpip_pb.time
+MOI.get(optimizer::Optimizer, ::MOI.SolveTime) = optimizer.sol.solve_time
 MOI.get(optimizer::Optimizer, ::MOI.PrimalStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
 MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
 
@@ -91,9 +124,36 @@ function MOI.get(optimizer::Optimizer, ::MOI.ResultCount)
     end
 end
 
+function MOI.get(optimizer::Optimizer, ::MOI.VariablePrimal, vi::VI)
+    return optimizer.sol.primal[vi.value]
+end
+function MOI.get(optimizer::Optimizer, a::MOI.VariablePrimal, vi::Vector{VI})
+    return MOI.get.(optimizer, a, vi)
+end
+
 # MOI setters
 
 # MOI optimize
 function MOI.optimize!(optimizer::Optimizer)
-    
+    cone = optimizer.cone
+    A = sparse(optimizer.data.I, optimizer.data.J, optimizer.data.V)
+    b = optimizer.data.b
+    obj_constant = optimizer.data.obj_constant
+    c = optimizer.data.c
+    optimizer.data = nothing # Allows GC to free optimizer.data before A is loaded to SCS
+
+    lpip_pb = LPIP.LPIPLinearProblem{Float64}(RawLinearProblem{Float64}(A, b, c, obj_constant))
+
+    t0 = time()
+    sol = LPIP.interior_points(lpip_pb, optimizer.params)
+    solve_time = time() - t0
+
+    # Query solutions
+    status = sol.status
+    primal = sol.variables.x
+    dual = sol.variables.p
+    obj_val = sol.obj_val
+    dual_obj_val = sol.dual_obj_val
+    optimizer.sol = MOISolution(status, primal, dual, obj_val, dual_obj_val, solve_time)
+    return
 end
