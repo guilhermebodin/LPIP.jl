@@ -17,8 +17,9 @@ mutable struct MOISolution
     obj_val::Float64
     dual_objval::Float64
     solve_time::Float64
+    iter::Int
 end
-MOISolution() = MOISolution(0, Float64[], Float64[], Float64[], NaN, NaN, NaN)
+MOISolution() = MOISolution(0, Float64[], Float64[], Float64[], NaN, NaN, NaN, 0)
 
 mutable struct ModelData
     m::Int # Numbero of constraints
@@ -155,7 +156,7 @@ end
 
 function MOIU.load_variables(optimizer::Optimizer, nvars::Integer)
     cone = optimizer.cone
-    @show cone    m = cone.f + cone.l
+    m = cone.f + cone.l
     I = Int[]
     J = Int[]
     V = Float64[]
@@ -267,6 +268,7 @@ function MOI.optimize!(optimizer::Optimizer)
     dual = sol.variables.p
     obj_val = sol.obj_val
     dual_obj_val = sol.dual_obj_val
-    optimizer.sol = MOISolution(status, primal, slack, dual, obj_val, dual_obj_val, solve_time)
+    iter = sol.iter
+    optimizer.sol = MOISolution(status, primal, slack, dual, obj_val, dual_obj_val, solve_time, iter)
     return
 end

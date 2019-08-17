@@ -16,8 +16,8 @@ c = [4; 3]
 d = 3.
 
 model = Model(with_optimizer(LPIP.Optimizer))
-@variable(model, x[1:2] >= 0)
-@constraint(model, con, A*x .<= b)
+@variable(model, x[1:2])
+@constraint(model, A * x - b in MOI.Nonpositives(2))
 @objective(model, Max, c'x + d)
 @time optimize!(model)
 JuMP.value.(x)
