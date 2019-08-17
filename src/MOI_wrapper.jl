@@ -14,7 +14,7 @@ mutable struct MOISolution
     primal::Vector{Float64} # primal of variables
     slack::Vector{Float64}
     dual::Vector{Float64} # dual of constraints
-    objval::Float64
+    obj_val::Float64
     dual_objval::Float64
     solve_time::Float64
 end
@@ -227,6 +227,21 @@ end
 function MOI.get(optimizer::Optimizer, a::MOI.VariablePrimal, vi::Vector{VI})
     return MOI.get.(optimizer, a, vi)
 end
+MOI.get(optimizer::Optimizer, ::MOI.ObjectiveValue) = optimizer.sol.obj_val
+function MOI.get(optimizer::Optimizer, ::MOI.ConstraintPrimal,
+                 ci::CI{<:MOI.AbstractFunction, S}) where S <: MOI.AbstractSet
+    offset = constroffset(optimizer, ci)
+    rows = constrrows(optimizer, ci)
+    primal = optimizer.sol.slack[offset .+ rows]
+    return primal
+end
+function MOI.get(optimizer::Optimizer, ::MOI.ConstraintDual,
+                 ci::CI{<:MOI.AbstractFunction, S}) where S <: MOI.AbstractSet
+    offset = constroffset(optimizer, ci)
+    rows = constrrows(optimizer, ci)
+    dual = optimizer.sol.dual[offset .+ rows]
+    return dual
+end
 
 # MOI setters
 
@@ -237,9 +252,8 @@ function MOI.optimize!(optimizer::Optimizer)
     b = optimizer.data.b
     obj_constant = optimizer.data.obj_constant
     c = optimizer.data.c
-    optimizer.data = nothing # Allows GC to free optimizer.data before A is loaded to SCS
+    # optimizer.data = nothing # Allows GC to free optimizer.data before A is loaded to LPIP
     
-    @show A, b, c, obj_constant, cone.l
     lpip_pb = LPIP.LPIPLinearProblem{Float64}(A, b, c, obj_constant, cone.l)
 
     t0 = time()
