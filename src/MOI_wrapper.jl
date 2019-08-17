@@ -12,14 +12,17 @@ const SS = Union{MOI.Zeros, MOI.Nonnegatives}
 mutable struct MOISolution
     status::Int
     primal::Vector{Float64} # primal of variables
+    slack::Vector{Float64}
     dual::Vector{Float64} # dual of constraints
     objval::Float64
     dual_objval::Float64
     solve_time::Float64
 end
-MOISolution() = MOISolution(0, Float64[], Float64[], NaN, NaN, NaN)
+MOISolution() = MOISolution(0, Float64[], Float64[], Float64[], NaN, NaN, NaN)
 
 mutable struct ModelData
+    m::Int # Numbero of constraints
+    n::Int # Number of variables
     I::Vector{Int} # List of rows
     J::Vector{Int} # List of cols
     V::Vector{Float64} # List of coefficients
@@ -57,7 +60,7 @@ function MOI.empty!(optimizer::Optimizer)
     return
 end
 
-MOIU.supports_allocate_load(::Optimizer, copy_names::Bool) = !copy_names
+MOIU.needs_allocate_load(instance::Optimizer) = true
 
 function MOI.supports(::Optimizer,
                       ::Union{MOI.ObjectiveSense,
@@ -79,30 +82,28 @@ function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart,
     return false
 end
 
-function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; kws...)
-    return MOIU.automatic_copy_to(dest, src; kws...)
+function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; copy_names = true)
+    return MOIU.allocate_load(dest, src, copy_names)
 end
 
 # Computes cone dimensions
-function constroffset(cone::ConeData, ci::CI{<:MOI.AbstractFunction, MOI.Zeros})
-    return ci.value
-end
-function _allocate_constraint(cone::ConeData, f, s::MOI.Zeros)
+constroffset(cone::ConeData, ci::CI{<:MOI.AbstractFunction, MOI.Zeros}) = ci.value
+function _allocate_constraint(cone::ConeData, f::MOI.AbstractFunction, s::MOI.Zeros)
     ci = cone.f
     cone.f += MOI.dimension(s)
     return ci
 end
-function constroffset(cone::ConeData, ci::CI{<:MOI.AbstractFunction, MOI.Nonnegatives})
-    return cone.f + ci.value
-end
-function _allocate_constraint(cone::ConeData, f, s::MOI.Nonnegatives)
+constroffset(cone::ConeData, ci::CI{<:MOI.AbstractFunction, MOI.Nonnegatives}) = cone.f + ci.value
+function _allocate_constraint(cone::ConeData, f::MOI.AbstractFunction, s::MOI.Nonnegatives)
     ci = cone.l
     cone.l += MOI.dimension(s)
     return ci
 end
+constroffset(optimizer::Optimizer, ci::CI) = constroffset(optimizer.cone, ci::CI)
 function MOIU.allocate_constraint(optimizer::Optimizer, f::F, s::S) where {F <: MOI.AbstractFunction, S <: MOI.AbstractSet}
     return CI{F, S}(_allocate_constraint(optimizer.cone, f, s))
 end
+constrrows(s::MOI.AbstractVectorSet) = 1:MOI.dimension(s)
 
 output_index(t::MOI.VectorAffineTerm) = t.output_index
 variable_index_value(t::MOI.ScalarAffineTerm) = t.variable_index.value
@@ -116,11 +117,79 @@ function MOIU.load_constraint(optimizer::Optimizer, ci::CI, f::MOI.VectorAffineF
     dropzeros!(A)
     I, J, V = findnz(A)
 
-    optimizer.data.b = f.constants
-    optimizer.data.I = I
-    optimizer.data.J = J
-    optimizer.data.V = V
+    offset = constroffset(optimizer, ci)
+    rows = constrrows(s)
+    i = offset .+ rows
+
+    b = f.constants
+    optimizer.data.b[i] = b
+    append!(optimizer.data.I, offset .+ I)
+    append!(optimizer.data.J, J)
+    append!(optimizer.data.V, -V)
     return
+end
+
+function MOIU.allocate_variables(optimizer::Optimizer, nvars::Integer)
+    return VI.(1:nvars)
+end
+
+# allocate block
+function MOIU.allocate(::Optimizer, ::MOI.VariablePrimalStart,
+                       ::MOI.VariableIndex, ::Union{Nothing, Float64})
+end
+function MOIU.allocate(::Optimizer, ::MOI.ConstraintPrimalStart,
+                       ::MOI.ConstraintIndex,
+                       ::Union{Nothing, AbstractVector{Float64}})
+end
+function MOIU.allocate(::Optimizer, ::MOI.ConstraintDualStart,
+                       ::MOI.ConstraintIndex,
+                       ::Union{Nothing, AbstractVector{Float64}})
+end
+function MOIU.allocate(optimizer::Optimizer, ::MOI.ObjectiveSense, sense::MOI.OptimizationSense)
+    optimizer.maxsense = sense == MOI.MAX_SENSE
+end
+function MOIU.allocate(::Optimizer, ::MOI.ObjectiveFunction,
+                       ::MOI.Union{MOI.SingleVariable,
+                                   MOI.ScalarAffineFunction{Float64}})
+end
+
+function MOIU.load_variables(optimizer::Optimizer, nvars::Integer)
+    cone = optimizer.cone
+    @show cone    m = cone.f + cone.l
+    I = Int[]
+    J = Int[]
+    V = Float64[]
+    b = zeros(m)
+    c = zeros(nvars)
+    optimizer.data = ModelData(m, nvars, I, J, V, b, 0., c)
+    # `optimizer.sol` contains the result of the previous optimization.
+    # It is used as a warm start if its length is the same, e.g.
+    # probably because no variable and/or constraint has been added.
+    if length(optimizer.sol.primal) != nvars
+        optimizer.sol.primal = zeros(nvars)
+    end
+    @assert length(optimizer.sol.dual) == length(optimizer.sol.slack)
+    if length(optimizer.sol.dual) != m
+        optimizer.sol.dual = zeros(m)
+        optimizer.sol.slack = zeros(m)
+    end
+end
+
+function MOIU.load(::Optimizer, ::MOI.ObjectiveSense, ::MOI.OptimizationSense)
+end
+function MOIU.load(optimizer::Optimizer, ::MOI.ObjectiveFunction,
+                   f::MOI.SingleVariable)
+    MOIU.load(optimizer,
+              MOI.ObjectiveFunction{MOI.ScalarAffineFunction{Float64}}(),
+              MOI.ScalarAffineFunction{Float64}(f))
+end
+function MOIU.load(optimizer::Optimizer, ::MOI.ObjectiveFunction,
+                   f::MOI.ScalarAffineFunction)
+    c0 = Vector(sparsevec(variable_index_value.(f.terms), coefficient.(f.terms),
+                          optimizer.data.n))
+    optimizer.data.obj_constant = f.constant
+    optimizer.data.c = optimizer.maxsense ? -c0 : c0
+    return nothing
 end
 
 # MOI getters 
@@ -169,7 +238,8 @@ function MOI.optimize!(optimizer::Optimizer)
     obj_constant = optimizer.data.obj_constant
     c = optimizer.data.c
     optimizer.data = nothing # Allows GC to free optimizer.data before A is loaded to SCS
-
+    
+    @show A, b, c, obj_constant, cone.l
     lpip_pb = LPIP.LPIPLinearProblem{Float64}(A, b, c, obj_constant, cone.l)
 
     t0 = time()
@@ -179,9 +249,10 @@ function MOI.optimize!(optimizer::Optimizer)
     # Query solutions
     status = sol.status
     primal = sol.variables.x
+    slack = sol.variables.x[end - cone.l:end]
     dual = sol.variables.p
     obj_val = sol.obj_val
     dual_obj_val = sol.dual_obj_val
-    optimizer.sol = MOISolution(status, primal, dual, obj_val, dual_obj_val, solve_time)
+    optimizer.sol = MOISolution(status, primal, slack, dual, obj_val, dual_obj_val, solve_time)
     return
 end

@@ -5,6 +5,12 @@
  3 - Time limit
  4 - Iteration limit
 """
+function interior_points(A::AbstractMatrix{T}, b::AbstractVector{T}, c::AbstractVector{T},
+                         d::T, l::Int, params::Params) where T
+    lpip_pb = LPIPLinearProblem{T}(A, b, c, d, l)
+    return interior_points(lpip_pb, params)
+end
+
 function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
     t0 = time() # Start the timer
     status = 0 # Not solved

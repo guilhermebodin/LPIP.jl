@@ -30,7 +30,7 @@ struct LPIPLinearProblem{T}
 
         # The number of equality constraints must be 
         # number of constraints - number of nonnegative
-        f = l > size(A, 1) ? error("The number of nonpositive constraints must be smaller than the number of rows") : size(A, 1) - l
+        f = l > size(A, 1) ? error("The number of nonnegative constraints must be smaller than the number of rows") : size(A, 1) - l
         extended_A = extend_A(A, f, l)
         extended_c = extend_c(c, l)
         m, n = size(extended_A)
