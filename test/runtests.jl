@@ -1,5 +1,7 @@
+import Pkg
+Pkg.activate(".")
 push!(LOAD_PATH, "/Users/guilhermebodin/LPIP.jl/src")
-using LPIP
+using LPIP, Test
 
 
 A = [
@@ -7,11 +9,11 @@ A = [
     1 2
 ]
 b = [4.;4]
-c = [0.0; 0]
+c = [-4.; -1]
 d = 3.
 
-lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 2)
-params = LPIP.Params(;rho = 0.01)
+lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 0)
+params = LPIP.Params(;rho = 0.01, verbose = true)
 
 @time lp = LPIP.interior_points(lpip_pb, params)
 

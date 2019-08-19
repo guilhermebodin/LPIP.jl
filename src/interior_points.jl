@@ -20,7 +20,7 @@ function interior_points(A::AbstractMatrix{T}, b::AbstractVector{T}, c::Abstract
 end
 
 function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
-    print_header(params.verbose)
+    print_header(params, lpip_pb)
     t0 = time() # Start the timer
     check_unbounded(lpip_pb) == LPIP_UNBOUNDED && return Result(lpip_pb, LPIP_UNBOUNDED, 0, time() - t0)
     check_infeasible(lpip_pb) == LPIP_INFEASIBLE && return Result(lpip_pb, LPIP_INFEASIBLE, 0, time() - t0)
@@ -35,6 +35,8 @@ function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
         update_lpip_pb_vars(newton_system, lpip_pb, params)
         # Check if time limit was reached
         check_time_limit(params.time_limit, t0) == LPIP_TIME_LIMIT && return Result(lpip_pb, LPIP_TIME_LIMIT, i, time() - t0)
+        # Print result of the iteration
+        print_evolution(params, lpip_pb, i, t0)
     end
     # Iteration limit
     return Result(lpip_pb, LPIP_ITERATION_LIMIT, params.max_iter, time() - t0)

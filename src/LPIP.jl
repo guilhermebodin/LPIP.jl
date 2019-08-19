@@ -1,6 +1,6 @@
 module LPIP
 
-using LinearAlgebra, SparseArrays
+using LinearAlgebra, SparseArrays, Printf
 
 include("structs.jl")
 include("prints.jl")
