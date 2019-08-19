@@ -46,10 +46,14 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
     maxsense::Bool
     sol::MOISolution
     params::Params
-    function Optimizer(args...)
-        return new(ConeData(), nothing, false, MOISolution(), Params(;args...))
+    function Optimizer(kwargs...)
+        return new(ConeData(), nothing, false, MOISolution(), Params(kwargs...))
     end
 end
+function Optimizer(;args...)
+    return Optimizer(args)
+end
+
 
 function MOI.is_empty(optimizer::Optimizer)
     return !optimizer.maxsense && optimizer.data === nothing

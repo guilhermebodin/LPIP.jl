@@ -15,10 +15,10 @@ b = [4.;4]
 c = [4; 3]
 d = 3.
 
-model = Model(with_optimizer(LPIP.Optimizer))
+model = Model(with_optimizer(LPIP.Optimizer, rho = 0.01, verbose = true))
 @variable(model, x[1:2])
 @constraint(model, A * x - b in MOI.Nonpositives(2))
 @objective(model, Max, c'x + d)
-@time optimize!(model)
+optimize!(model)
 JuMP.value.(x)
 JuMP.objective_value(model)

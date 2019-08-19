@@ -45,7 +45,7 @@ end
 
 function extend_A(A::AbstractMatrix{T}, f::Int, l::Int) where T
     if l > 0 && f != 0 
-        return [A [zeros(f); Matrix{T}(I, l, l)]]
+        return [A [zeros(f, l); Matrix{T}(I, l, l)]]
     elseif f == 0
         return [A Matrix{T}(I, l, l)]
     end
@@ -89,8 +89,28 @@ mutable struct Params
 
     function Params(;verbose::Bool = false, max_iter::Int = 100, rho::Float64 = 0.1,
                     alpha::Float64 = 0.9, tol::Float64 = 1e-6, time_limit::Float64 = 1e10)
-        (rho <= 0 || rho > 1) && error("rho must be between in (0, 1]")
-        (alpha <= 0 || alpha >= 1) && error("alpha must be in (0, 1)")
+        (rho <= 0 && rho > 1) && error("rho must be between in [0, 1)")
+        (alpha < 0 && alpha > 1) && error("alpha must be in (0, 1)")
         return new(verbose, max_iter, rho, alpha, tol, time_limit)
     end
+end
+function Params(args)
+    params = Params()
+    parse_args!(params, args)
+    return params
+end
+function parse_args!(options, args)
+    for i in args
+        parse_arg!(options, i)
+    end
+    return nothing
+end
+function parse_arg!(params::Params, arg)
+    fields = fieldnames(Params)
+    name = arg[1]
+    value = arg[2]
+    if name in fields
+        setfield!(params, name, value)
+    end
+    return nothing
 end
