@@ -20,6 +20,7 @@ function interior_points(A::AbstractMatrix{T}, b::AbstractVector{T}, c::Abstract
 end
 
 function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
+    print_header(params.verbose)
     t0 = time() # Start the timer
     check_unbounded(lpip_pb) == LPIP_UNBOUNDED && return Result(lpip_pb, LPIP_UNBOUNDED, 0, time() - t0)
     check_infeasible(lpip_pb) == LPIP_INFEASIBLE && return Result(lpip_pb, LPIP_INFEASIBLE, 0, time() - t0)
