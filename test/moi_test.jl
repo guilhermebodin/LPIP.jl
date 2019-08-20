@@ -8,12 +8,17 @@ const MOIB = MOI.Bridges
 const CI = MOI.ConstraintIndex
 const VI = MOI.VariableIndex
 
+MOIU.@model(LPIPModelData,
+            (),
+            (MOI.EqualTo, MOI.GreaterThan, MOI.LessThan, MOI.Interval),
+            (MOI.Reals, MOI.Zeros, MOI.Nonnegatives, MOI.Nonpositives),
+            (),
+            (),
+            (MOI.ScalarAffineFunction,),
+            (MOI.VectorOfVariables,),
+            (MOI.VectorAffineFunction, MOI.VectorQuadraticFunction))
 
-MOIU.@model LPIPModelData () () (MOI.Zeros, MOI.Nonnegatives) () () (MOI.ScalarAffineFunction,) () (MOI.VectorAffineFunction,)
-
-universal_fallback = MOIU.UniversalFallback(LPIPModelData{Float64}())
-const optimizer = MOIU.CachingOptimizer(universal_fallback, LPIP.Optimizer())
-# const optimizer = MOIU.CachingOptimizer(LPIPModelData{Float64}(), LPIP.Optimizer())
+const optimizer = MOIU.CachingOptimizer(LPIPModelData{Float64}(), LPIP.Optimizer())
 const config = MOIT.TestConfig(atol=1e-5, rtol=1e-5, infeas_certificates = false)
 
 @testset "MOI tests" begin
