@@ -99,9 +99,9 @@ function Params(args)
     parse_args!(params, args)
     return params
 end
-function parse_args!(options, args)
+function parse_args!(params::Params, args)
     for i in args
-        parse_arg!(options, i)
+        parse_arg!(params::Params, i)
     end
     return nothing
 end

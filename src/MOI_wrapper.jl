@@ -65,7 +65,7 @@ function MOI.empty!(optimizer::Optimizer)
     return
 end
 
-MOIU.needs_allocate_load(instance::Optimizer) = true
+MOIU.supports_allocate_load(model::Optimizer, copy_names::Bool) = true
 
 function MOI.supports(::Optimizer,
                       ::Union{MOI.ObjectiveSense,
@@ -87,8 +87,8 @@ function MOI.supports(::Optimizer, ::MOI.VariablePrimalStart,
     return false
 end
 
-function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; copy_names = true)
-    return MOIU.allocate_load(dest, src, copy_names)
+function MOI.copy_to(dest::Optimizer, src::MOI.ModelLike; kws...)
+    return MOIU.automatic_copy_to(dest, src; kws...)
 end
 
 # Computes cone dimensions
@@ -135,6 +135,7 @@ function MOIU.load_constraint(optimizer::Optimizer, ci::CI, f::MOI.VectorAffineF
 end
 
 function MOIU.allocate_variables(optimizer::Optimizer, nvars::Integer)
+    optimizer.cone = ConeData()
     return VI.(1:nvars)
 end
 
@@ -167,17 +168,7 @@ function MOIU.load_variables(optimizer::Optimizer, nvars::Integer)
     b = zeros(m)
     c = zeros(nvars)
     optimizer.data = ModelData(m, nvars, I, J, V, b, 0., c)
-    # `optimizer.sol` contains the result of the previous optimization.
-    # It is used as a warm start if its length is the same, e.g.
-    # probably because no variable and/or constraint has been added.
-    if length(optimizer.sol.primal) != nvars
-        optimizer.sol.primal = zeros(nvars)
-    end
-    @assert length(optimizer.sol.dual) == length(optimizer.sol.slack)
-    if length(optimizer.sol.dual) != m
-        optimizer.sol.dual = zeros(m)
-        optimizer.sol.slack = zeros(m)
-    end
+    return 
 end
 
 function MOIU.load(::Optimizer, ::MOI.ObjectiveSense, ::MOI.OptimizationSense)

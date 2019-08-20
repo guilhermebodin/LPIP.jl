@@ -1,45 +1,47 @@
-import Pkg
-Pkg.activate(".")
-push!(LOAD_PATH, "/Users/guilhermebodin/LPIP.jl/src")
-using LPIP, Test
-
 using MathOptInterface
 
 const MOI = MathOptInterface
+const MOIU = MOI.Utilities
+const MOIT = MOI.Test
+const MOIB = MOI.Bridges
+
 const CI = MOI.ConstraintIndex
 const VI = MOI.VariableIndex
 
-const MOIU = MOI.Utilities
 
-MOIU.@model LPIPModelData () () (MOI.Zeros, MOI.Nonnegatives) () (MOI.SingleVariable,) (MOI.ScalarAffineFunction,) () (MOI.VectorAffineFunction,)
+MOIU.@model LPIPModelData () () (MOI.Zeros, MOI.Nonnegatives) () () (MOI.ScalarAffineFunction,) () (MOI.VectorAffineFunction,)
 
-const optimizer = MOIU.CachingOptimizer(LPIPModelData{Float64}(), LPIP.Optimizer())
+universal_fallback = MOIU.UniversalFallback(LPIPModelData{Float64}())
+const optimizer = MOIU.CachingOptimizer(universal_fallback, LPIP.Optimizer())
+# const optimizer = MOIU.CachingOptimizer(LPIPModelData{Float64}(), LPIP.Optimizer())
+const config = MOIT.TestConfig(atol=1e-6, rtol=1e-6, infeas_certificates = false)
 
-MOI.empty!(optimizer)
-@test MOI.is_empty(optimizer)
-#= 
-    min -3x - 2y - 4z
-s.t.    
-    x +  y +  z == 3
-    y +  z == 2
-    x>=0 y>=0 z>=0
-=#
+@testset "MOI tests" begin
+    @testset "SolverName" begin
+        @test MOI.get(optimizer, MOI.SolverName()) == "LPIP"
+    end
+    @testset "Unit" begin
+        MOIT.unittest(MOIB.full_bridge_optimizer(optimizer, Float64), config,[
+            # Quadratic functions are not supported
+            "solve_qcp_edge_cases", "solve_qp_edge_cases",
+            # Integer and ZeroOne sets are not supported
+            "solve_integer_edge_cases", "solve_objbound_edge_cases"
+            ]
+        )
+    end
+    @testset "MOI Continuous Linear" begin
+        MOIT.contlineartest(MOIB.full_bridge_optimizer(optimizer, Float64), config, [
+            # infeasible/unbounded
+            # "linear8a", "linear8b", "linear8c", "linear12",
+            # linear10 is poorly conditioned
+            "linear10",
+            # linear9 is requires precision
+            "linear9",
+            # primalstart not accepted
+            "partial_start"
+            ]
+        )
+        # MOIT.linear9test(MOIB.SplitInterval{Float64}(optimizer_lin_hd), config)
+    end
+end
 
-v = MOI.add_variables(optimizer, 3)
-
-vov = MOI.VectorOfVariables(v)
-
-c = MOI.add_constraint(optimizer, MOI.VectorAffineFunction(MOI.VectorAffineTerm.([1,1,1,2,2], MOI.ScalarAffineTerm.(1.0, [v;v[2];v[3]])), [-3.0,-2.0]), MOI.Zeros(2))
-
-MOI.set(optimizer, MOI.ObjectiveFunction{MOI.ScalarAffineFunction{Float64}}(), MOI.ScalarAffineFunction(MOI.ScalarAffineTerm.([-3.0, -2.0, -4.0], v), 0.0))
-MOI.set(optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)
-
-MOI.optimize!(optimizer)
-
-obj = MOI.get(optimizer, MOI.ObjectiveValue())
-
-@test obj ≈ -9.33333 atol = 1e-2
-
-Xr = MOI.get(optimizer, MOI.VariablePrimal(), X)
-
-@test Xr ≈ [1.3333, 1.3333] atol = 1e-2
