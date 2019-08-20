@@ -1,7 +1,7 @@
 function print_header(params::Params, lpip_pb::LPIPLinearProblem{T}) where T
     if params.verbose 
         println("                                                   ")
-        println(" LPIP.jl v0.1.0  (c) Guilherme Bodin,  2019        ")
+        println(" LPIP.jl v0.1.0  (c) Guilherme Bodin, Iago Chávarry 2019        ")
         println("                                                   ")
         println("Problem with: ", lpip_pb.n - lpip_pb.l, " variables,")
         println("              ", lpip_pb.f, " equality constraints,")
