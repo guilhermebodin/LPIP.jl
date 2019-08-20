@@ -14,7 +14,7 @@ MOIU.@model LPIPModelData () () (MOI.Zeros, MOI.Nonnegatives) () () (MOI.ScalarA
 universal_fallback = MOIU.UniversalFallback(LPIPModelData{Float64}())
 const optimizer = MOIU.CachingOptimizer(universal_fallback, LPIP.Optimizer())
 # const optimizer = MOIU.CachingOptimizer(LPIPModelData{Float64}(), LPIP.Optimizer())
-const config = MOIT.TestConfig(atol=1e-6, rtol=1e-6, infeas_certificates = false)
+const config = MOIT.TestConfig(atol=1e-5, rtol=1e-5, infeas_certificates = false)
 
 @testset "MOI tests" begin
     @testset "SolverName" begin
