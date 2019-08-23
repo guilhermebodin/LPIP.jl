@@ -195,8 +195,8 @@ end
 # MOI getters 
 MOI.get(::Optimizer, ::MOI.SolverName) = "LPIP"
 MOI.get(optimizer::Optimizer, ::MOI.SolveTime) = optimizer.sol.solve_time
-MOI.get(optimizer::Optimizer, ::MOI.PrimalStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
-MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
+MOI.get(optimizer::Optimizer, ::MOI.PrimalStatus) = optimizer.sol.status in (1, 3) ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
+MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status in (1, 2) ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
 
 function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
     s = optimizer.sol.status
@@ -208,7 +208,7 @@ function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
     elseif s == 2
         return MOI.INFEASIBLE
     elseif s == 3
-        return MOI.UNBOUNDED
+        return MOI.DUAL_INFEASIBLE
     elseif s == 4
         return MOI.TIME_LIMIT
     elseif s == 5
@@ -216,7 +216,7 @@ function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
     end
 end
 function MOI.get(optimizer::Optimizer, ::MOI.ResultCount)
-    if MOI.get(optimizer, MOI.TerminationStatus()) == MOI.INFEASIBLE_OR_UNBOUNDED
+    if MOI.get(optimizer, MOI.TerminationStatus()) in (MOI.INFEASIBLE, MOI.DUAL_INFEASIBLE)
         return 0
     else
         return 1
@@ -243,8 +243,7 @@ function MOI.get(optimizer::Optimizer, ::MOI.ConstraintDual,
                  ci::CI{<:MOI.AbstractFunction, S}) where S <: MOI.AbstractSet
     offset = constroffset(optimizer, ci)
     rows = constrrows(optimizer, ci)
-    dual = optimizer.sol.dual[offset .+ rows]
-    return dual
+    return -optimizer.sol.dual[offset .+ rows]
 end
 
 # MOI setters
