@@ -35,8 +35,9 @@ end
 mutable struct ConeData
     f::Int # length of the zero cone (equality constraints)
     l::Int # length of the nonnegatives cone (<= constraints)
+    nrows::Dict{Int, Int} # The number of rows of each vector sets, this is used by `constrrows` to recover the number of rows used by a constraint when getting `ConstraintPrimal` or `ConstraintDual`
     function ConeData()
-        return new(0, 0)
+        return new(0, 0, Dict{Int, Int}())
     end
 end
 
@@ -109,6 +110,8 @@ function MOIU.allocate_constraint(optimizer::Optimizer, f::F, s::S) where {F <: 
     return CI{F, S}(_allocate_constraint(optimizer.cone, f, s))
 end
 constrrows(s::MOI.AbstractVectorSet) = 1:MOI.dimension(s)
+# When only the index is available, use the `optimizer.ncone.nrows` field
+constrrows(optimizer::Optimizer, ci::CI{<:MOI.AbstractVectorFunction, <:MOI.AbstractVectorSet}) = 1:optimizer.cone.nrows[constroffset(optimizer, ci)]
 
 output_index(t::MOI.VectorAffineTerm) = t.output_index
 variable_index_value(t::MOI.ScalarAffineTerm) = t.variable_index.value
@@ -124,6 +127,7 @@ function MOIU.load_constraint(optimizer::Optimizer, ci::CI, f::MOI.VectorAffineF
 
     offset = constroffset(optimizer, ci)
     rows = constrrows(s)
+    optimizer.cone.nrows[offset] = length(rows)
     i = offset .+ rows
 
     b = f.constants
@@ -196,16 +200,18 @@ MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status == 1 ? MO
 
 function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
     s = optimizer.sol.status
-    @assert 0 <= s <= 4
+    @assert 0 <= s <= 5
     if s == 0
         return MOI.OPTIMIZE_NOT_CALLED
     elseif s == 1
         return MOI.OPTIMAL
     elseif s == 2
-        return MOI.INFEASIBLE_OR_UNBOUNDED
+        return MOI.INFEASIBLE
     elseif s == 3
-        return MOI.TIME_LIMIT
+        return MOI.UNBOUNDED
     elseif s == 4
+        return MOI.TIME_LIMIT
+    elseif s == 5
         return MOI.ITERATION_LIMIT
     end
 end
@@ -223,7 +229,9 @@ end
 function MOI.get(optimizer::Optimizer, a::MOI.VariablePrimal, vi::Vector{VI})
     return MOI.get.(optimizer, a, vi)
 end
-MOI.get(optimizer::Optimizer, ::MOI.ObjectiveValue) = optimizer.sol.obj_val
+function MOI.get(optimizer::Optimizer, ::MOI.ObjectiveValue)
+    return optimizer.maxsense ? -optimizer.sol.obj_val : optimizer.sol.obj_val
+end
 function MOI.get(optimizer::Optimizer, ::MOI.ConstraintPrimal,
                  ci::CI{<:MOI.AbstractFunction, S}) where S <: MOI.AbstractSet
     offset = constroffset(optimizer, ci)
