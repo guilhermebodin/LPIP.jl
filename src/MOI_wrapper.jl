@@ -6,9 +6,6 @@ const VI = MOI.VariableIndex
 
 const MOIU = MOI.Utilities
 
-const SF = MOI.VectorAffineFunction{Float64}
-const SS = Union{MOI.Zeros, MOI.Nonnegatives}
-
 mutable struct MOISolution
     status::Int
     primal::Vector{Float64} # primal of variables
@@ -66,19 +63,25 @@ function MOI.empty!(optimizer::Optimizer)
     return
 end
 
+MOI.supports(::Optimizer, ::MOI.Silent) = true
+function MOI.set(optimizer::Optimizer, ::MOI.Silent, value::Bool)
+    optimizer.params.verbose = value
+end
+MOI.get(optimizer::Optimizer, ::MOI.Silent) = optimizer.params.verbose
+
 MOIU.supports_allocate_load(model::Optimizer, copy_names::Bool) = true
 
 function MOI.supports(::Optimizer,
                       ::Union{MOI.ObjectiveSense,
-                              MOI.ObjectiveFunction{MOI.SingleVariable},
                               MOI.ObjectiveFunction{MOI.ScalarAffineFunction{Float64}}})
     return true
 end
 
-function MOI.supports_constraint(optimizer::Optimizer, F::Type{<:SF}, S::Type{<:SS})
+const SF = MOI.VectorAffineFunction{Float64}
+const SS = Union{MOI.Zeros, MOI.Nonnegatives}
+function MOI.supports_constraint(optimizer::Optimizer, ::Type{<:SF}, ::Type{<:SS})
     return true
 end
-
 function MOI.supports_constraint(::Optimizer, ::Type{MOI.AbstractFunction}, ::Type{MOI.AbstractSet})
     return false 
 end
@@ -141,6 +144,24 @@ end
 function MOIU.allocate_variables(optimizer::Optimizer, nvars::Integer)
     optimizer.cone = ConeData()
     return VI.(1:nvars)
+end
+
+function MOIU.allocate_constrained_variables(optimizer::Optimizer, set::MOI.Nonnegatives)
+    offset = length(optimizer.varmap)
+    ci = MOI.ConstraintIndex{MOI.VectorAffineFunction{Float64}, MOI.Nonnegatives}(offset + 1)
+    return [MOI.VariableIndex(i) for i in offset .+ (1:MOI.dimension(set))], ci
+end
+
+function MOIU.allocate_constrained_variables(optimizer::Optimizer, set::MOI.Zeros)
+    offset = length(optimizer.varmap)
+    ci = MOI.ConstraintIndex{MOI.VectorAffineFunction{Float64}, MOI.Zeros}(offset + 1)
+    return [MOI.VariableIndex(i) for i in offset .+ (1:MOI.dimension(set))], ci
+end
+
+function MOIU.load_constrained_variables(
+    optimizer::Optimizer, vis::Vector{MOI.VariableIndex},
+    ci::MOI.ConstraintIndex{MOI.VectorAffineFunction{Float64}},
+    set::SS)
 end
 
 # allocate block
