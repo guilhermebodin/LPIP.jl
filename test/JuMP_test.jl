@@ -1,7 +1,7 @@
 import Pkg
 Pkg.activate(".")
-push!(LOAD_PATH, "/Users/guilhermebodin/LPIP.jl/src")
-using LPIP, Test
+push!(LOAD_PATH, "/home/guilhermebodin/Documents/Github/LPIP.jl/src")
+using LPIP, Test, GLPK
 
 using MathOptInterface, JuMP
 
@@ -19,12 +19,16 @@ lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 0)
 params = LPIP.Params(;rho = 0.01, verbose = true)
 @time lp = LPIP.interior_points(lpip_pb, params)
 
+A = rand(10, 10)
+b = rand(10)
+c = rand(10)
+
 model = Model(with_optimizer(LPIP.Optimizer, rho = 0.01, verbose = true))
-@variable(model, x[1:2])
-@constraint(model, A * x - b in MOI.Nonpositives(2))
-@objective(model, Min, c'x + d)
+# model = Model(with_optimizer(GLPK.Optimizer))
+@variable(model, x[1:10])
+@constraint(model, A * x - b in MOI.Zeros(10))
+@objective(model, Min, c'x + 3)
 optimize!(model)
 JuMP.value.(x)
 JuMP.objective_value(model)
-
-backend(model)
+JuMP.termination_status(model)

@@ -6,9 +6,6 @@ const VI = MOI.VariableIndex
 
 const MOIU = MOI.Utilities
 
-const SF = MOI.VectorAffineFunction{Float64}
-const SS = Union{MOI.Zeros, MOI.Nonnegatives}
-
 mutable struct MOISolution
     status::Int
     primal::Vector{Float64} # primal of variables
@@ -35,8 +32,9 @@ end
 mutable struct ConeData
     f::Int # length of the zero cone (equality constraints)
     l::Int # length of the nonnegatives cone (<= constraints)
+    nrows::Dict{Int, Int} # The number of rows of each vector sets, this is used by `constrrows` to recover the number of rows used by a constraint when getting `ConstraintPrimal` or `ConstraintDual`
     function ConeData()
-        return new(0, 0)
+        return new(0, 0, Dict{Int, Int}())
     end
 end
 
@@ -65,19 +63,25 @@ function MOI.empty!(optimizer::Optimizer)
     return
 end
 
+MOI.supports(::Optimizer, ::MOI.Silent) = true
+function MOI.set(optimizer::Optimizer, ::MOI.Silent, value::Bool)
+    optimizer.params.verbose = value
+end
+MOI.get(optimizer::Optimizer, ::MOI.Silent) = optimizer.params.verbose
+
 MOIU.supports_allocate_load(model::Optimizer, copy_names::Bool) = true
 
 function MOI.supports(::Optimizer,
                       ::Union{MOI.ObjectiveSense,
-                              MOI.ObjectiveFunction{MOI.SingleVariable},
                               MOI.ObjectiveFunction{MOI.ScalarAffineFunction{Float64}}})
     return true
 end
 
-function MOI.supports_constraint(optimizer::Optimizer, F::Type{<:SF}, S::Type{<:SS})
+const SF = MOI.VectorAffineFunction{Float64}
+const SS = Union{MOI.Zeros, MOI.Nonnegatives}
+function MOI.supports_constraint(optimizer::Optimizer, ::Type{<:SF}, ::Type{<:SS})
     return true
 end
-
 function MOI.supports_constraint(::Optimizer, ::Type{MOI.AbstractFunction}, ::Type{MOI.AbstractSet})
     return false 
 end
@@ -109,6 +113,8 @@ function MOIU.allocate_constraint(optimizer::Optimizer, f::F, s::S) where {F <: 
     return CI{F, S}(_allocate_constraint(optimizer.cone, f, s))
 end
 constrrows(s::MOI.AbstractVectorSet) = 1:MOI.dimension(s)
+# When only the index is available, use the `optimizer.ncone.nrows` field
+constrrows(optimizer::Optimizer, ci::CI{<:MOI.AbstractVectorFunction, <:MOI.AbstractVectorSet}) = 1:optimizer.cone.nrows[constroffset(optimizer, ci)]
 
 output_index(t::MOI.VectorAffineTerm) = t.output_index
 variable_index_value(t::MOI.ScalarAffineTerm) = t.variable_index.value
@@ -124,6 +130,7 @@ function MOIU.load_constraint(optimizer::Optimizer, ci::CI, f::MOI.VectorAffineF
 
     offset = constroffset(optimizer, ci)
     rows = constrrows(s)
+    optimizer.cone.nrows[offset] = length(rows)
     i = offset .+ rows
 
     b = f.constants
@@ -137,6 +144,24 @@ end
 function MOIU.allocate_variables(optimizer::Optimizer, nvars::Integer)
     optimizer.cone = ConeData()
     return VI.(1:nvars)
+end
+
+function MOIU.allocate_constrained_variables(optimizer::Optimizer, set::MOI.Nonnegatives)
+    offset = length(optimizer.varmap)
+    ci = MOI.ConstraintIndex{MOI.VectorAffineFunction{Float64}, MOI.Nonnegatives}(offset + 1)
+    return [MOI.VariableIndex(i) for i in offset .+ (1:MOI.dimension(set))], ci
+end
+
+function MOIU.allocate_constrained_variables(optimizer::Optimizer, set::MOI.Zeros)
+    offset = length(optimizer.varmap)
+    ci = MOI.ConstraintIndex{MOI.VectorAffineFunction{Float64}, MOI.Zeros}(offset + 1)
+    return [MOI.VariableIndex(i) for i in offset .+ (1:MOI.dimension(set))], ci
+end
+
+function MOIU.load_constrained_variables(
+    optimizer::Optimizer, vis::Vector{MOI.VariableIndex},
+    ci::MOI.ConstraintIndex{MOI.VectorAffineFunction{Float64}},
+    set::SS)
 end
 
 # allocate block
@@ -191,26 +216,28 @@ end
 # MOI getters 
 MOI.get(::Optimizer, ::MOI.SolverName) = "LPIP"
 MOI.get(optimizer::Optimizer, ::MOI.SolveTime) = optimizer.sol.solve_time
-MOI.get(optimizer::Optimizer, ::MOI.PrimalStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
-MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status == 1 ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
+MOI.get(optimizer::Optimizer, ::MOI.PrimalStatus) = optimizer.sol.status in (1, 3) ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
+MOI.get(optimizer::Optimizer, ::MOI.DualStatus) = optimizer.sol.status in (1, 2) ? MOI.FEASIBLE_POINT : MOI.INFEASIBLE_POINT
 
 function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
     s = optimizer.sol.status
-    @assert 0 <= s <= 4
+    @assert 0 <= s <= 5
     if s == 0
         return MOI.OPTIMIZE_NOT_CALLED
     elseif s == 1
         return MOI.OPTIMAL
     elseif s == 2
-        return MOI.INFEASIBLE_OR_UNBOUNDED
+        return MOI.INFEASIBLE
     elseif s == 3
-        return MOI.TIME_LIMIT
+        return MOI.DUAL_INFEASIBLE
     elseif s == 4
+        return MOI.TIME_LIMIT
+    elseif s == 5
         return MOI.ITERATION_LIMIT
     end
 end
 function MOI.get(optimizer::Optimizer, ::MOI.ResultCount)
-    if MOI.get(optimizer, MOI.TerminationStatus()) == MOI.INFEASIBLE_OR_UNBOUNDED
+    if MOI.get(optimizer, MOI.TerminationStatus()) in (MOI.INFEASIBLE, MOI.DUAL_INFEASIBLE)
         return 0
     else
         return 1
@@ -223,7 +250,9 @@ end
 function MOI.get(optimizer::Optimizer, a::MOI.VariablePrimal, vi::Vector{VI})
     return MOI.get.(optimizer, a, vi)
 end
-MOI.get(optimizer::Optimizer, ::MOI.ObjectiveValue) = optimizer.sol.obj_val
+function MOI.get(optimizer::Optimizer, ::MOI.ObjectiveValue)
+    return optimizer.maxsense ? -optimizer.sol.obj_val : optimizer.sol.obj_val
+end
 function MOI.get(optimizer::Optimizer, ::MOI.ConstraintPrimal,
                  ci::CI{<:MOI.AbstractFunction, S}) where S <: MOI.AbstractSet
     offset = constroffset(optimizer, ci)
@@ -235,8 +264,7 @@ function MOI.get(optimizer::Optimizer, ::MOI.ConstraintDual,
                  ci::CI{<:MOI.AbstractFunction, S}) where S <: MOI.AbstractSet
     offset = constroffset(optimizer, ci)
     rows = constrrows(optimizer, ci)
-    dual = optimizer.sol.dual[offset .+ rows]
-    return dual
+    return -optimizer.sol.dual[offset .+ rows]
 end
 
 # MOI setters
