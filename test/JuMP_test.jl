@@ -18,11 +18,12 @@ d = 3.
 lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 2)
 params = LPIP.Params(;rho = 0.01, verbose = false)    
 lp = LPIP.interior_points(lpip_pb, params)
-
+rho = 0.01
+verbose = false
 using BenchmarkTools
 @benchmark begin
-    lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 2)
-    params = LPIP.Params(;rho = 0.01, verbose = false)    
+    lpip_pb = LPIPLinearProblem{Float64}($A, $b, $c, $d, 2)
+    params = LPIP.Params(;rho = $rho, verbose = $verbose)    
     lp = LPIP.interior_points(lpip_pb, params)
 end
 
@@ -31,7 +32,7 @@ model = Model(with_optimizer(LPIP.Optimizer, rho = 0.01, verbose = true))
 @variable(model, x[1:2])
 @constraint(model, A * x - b in MOI.Zeros(2))
 @objective(model, Min, c'x + d)
-optimize!(model)
+@time optimize!(model)
 JuMP.value.(x)
 JuMP.objective_value(model)
 JuMP.termination_status(model)
