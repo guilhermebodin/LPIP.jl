@@ -15,20 +15,24 @@ b = [4.;4]
 c = [-4.; -3]
 d = 3.
 
-lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 0)
-params = LPIP.Params(;rho = 0.01, verbose = true)
-@time lp = LPIP.interior_points(lpip_pb, params)
-
-A = rand(10, 10)
-b = rand(10)
-c = rand(10)
+lpip_pb = LPIPLinearProblem{Float64}(A, b, c, d, 2)
+params = LPIP.Params(;rho = 0.01, verbose = false)    
+lp = LPIP.interior_points(lpip_pb, params)
+rho = 0.01
+verbose = false
+using BenchmarkTools
+@benchmark begin
+    lpip_pb = LPIPLinearProblem{Float64}($A, $b, $c, $d, 2)
+    params = LPIP.Params(;rho = $rho, verbose = $verbose)    
+    lp = LPIP.interior_points(lpip_pb, params)
+end
 
 model = Model(with_optimizer(LPIP.Optimizer, rho = 0.01, verbose = true))
 # model = Model(with_optimizer(GLPK.Optimizer))
-@variable(model, x[1:10])
-@constraint(model, A * x - b in MOI.Zeros(10))
-@objective(model, Min, c'x + 3)
-optimize!(model)
+@variable(model, x[1:2])
+@constraint(model, A * x - b in MOI.Zeros(2))
+@objective(model, Min, c'x + d)
+@time optimize!(model)
 JuMP.value.(x)
 JuMP.objective_value(model)
 JuMP.termination_status(model)

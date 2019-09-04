@@ -24,7 +24,7 @@ function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
     t0 = time() # Start the timer
     newton_system = NewtonSystem{T}(lpip_pb, params)
     # Interior points iteration
-    @inbounds for i in 1:params.max_iter
+    for i in 1:params.max_iter
         # Optimality test
         check_optimality(lpip_pb, params) == LPIP_OPTIMAL && return Result(lpip_pb, LPIP_OPTIMAL, i, time() - t0)
         check_unbounded(lpip_pb, params) == LPIP_DUAL_INFEASIBLE && return Result(lpip_pb, LPIP_DUAL_INFEASIBLE, 0, time() - t0)
@@ -32,7 +32,8 @@ function interior_points(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
         # Solve the system and fill newton directions
         solve_kkt(newton_system, lpip_pb, params)
         # Update x, s, p
-        update_lpip_pb_vars(newton_system, lpip_pb, params)
+        update_lpip_pb_vars!(lpip_pb.variables.x, lpip_pb.variables.s, lpip_pb.variables.p,
+                             newton_system.d_result, params.alpha, lpip_pb.n, lpip_pb.m)
         # Check if time limit was reached
         check_time_limit(params.time_limit, t0) == LPIP_TIME_LIMIT && return Result(lpip_pb, LPIP_TIME_LIMIT, i, time() - t0)
         # Print result of the iteration
@@ -70,27 +71,34 @@ function check_unbounded(lpip_pb::LPIPLinearProblem{T}, params::Params) where T
     return LPIP_NOT_SOLVED
 end
 
-function update_lpip_pb_vars(newton_system::NewtonSystem{T}, lpip_pb::LPIPLinearProblem{T}, params::Params) where T
+function update_lpip_pb_vars!(x::AbstractVector{T}, s::AbstractVector{T}, p::AbstractVector{T},
+                              d::AbstractVector{T}, alpha::Float64, n::Int, m::Int) where T
     # Find step lenghts
     beta_primal = 1
     beta_dual = 1
 
-    for i in 1:lpip_pb.n
-        if newton_system.d.dx[i] <= 0
-            if beta_primal > - lpip_pb.variables.x[i] / newton_system.d.dx[i]
-                beta_primal = - lpip_pb.variables.x[i] / newton_system.d.dx[i]
+    @inbounds for i in 1:n
+        if d[i] <= 0
+            if beta_primal > - x[i] / d[i]
+                beta_primal = - x[i] / d[i]
             end
         end
-        if newton_system.d.ds[i] <= 0
-            if beta_dual > - lpip_pb.variables.s[i] / newton_system.d.ds[i]
-                beta_dual = - lpip_pb.variables.s[i] / newton_system.d.ds[i]
+        if d[n + m + i] <= 0
+            if beta_dual > - s[i] / d[n + m + i]
+                beta_dual = - s[i] / d[n + m + i]
             end
         end
     end
 
-    # Update variables
-    @. lpip_pb.variables.x += params.alpha * beta_primal * newton_system.d.dx
-    @. lpip_pb.variables.p += params.alpha * beta_dual * newton_system.d.dp
-    @. lpip_pb.variables.s += params.alpha * beta_dual * newton_system.d.ds
+    alpha_beta_primal = alpha * beta_primal
+    alpha_beta_dual = alpha * beta_dual
+
+    @inbounds  for i in 1:n
+        x[i] += alpha_beta_primal*d[i]
+        s[i] += alpha_beta_dual*d[n + m + i]
+    end
+    @inbounds for i in 1:m
+        p[i] += alpha_beta_dual*d[n + i]
+    end
     return
 end
